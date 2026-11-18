@@ -52,6 +52,15 @@ check "hand-run: snap moves screenshot into evidence" bash -c "'$P/qa.sh' snap s
 check "hand-run: steprun logs a step" "$P/qa.sh" steprun 1 "Open login" "Form shown" "Form shown" pass
 check "hand-run: handresult has version + evidence" bash -c "'$P/qa.sh' handresult pass | grep -q 'App version: 9.9.9-selftest' && grep -q 01-login.png .qa/runs/DEMO-1/*/result.md"
 check "walkthrough becomes a draft case" bash -c "'$P/qa.sh' walkthrough && test -f .qa/cases/DEMO-1.walkthrough.json"
+# Messy real-world header: typo, singular "Test Step " with trailing space, steps numbered inline on one line
+printf ',,Project Name,Demo\n\nTest Case ID,Test Scenario,Test Case Discription,Test Step ,Expected Result,Priority\nTC_01,Verify login,Login with valid user,"1.Open login     2.Submit valid user","Dashboard visible",P1\n' > sheet.csv
+check "Excel/CSV import reads the tester's sheet" bash -c "'$P/qa.sh' cases import sheet.csv | grep -q 'Imported 1 case(s), 2 step(s)'"
+check "sheet pin works without Jira" bash -c "'$P/qa.sh' anchor --sheet .qa/cases/sheet.json && '$P/qa.sh' drift | grep -q 'no Jira'"
+check "sheet run writes a new results workbook" bash -c "'$P/qa.sh' run start TC_01 && '$P/qa.sh' steprun 1 'Open login' 'Form shown' 'Form shown' pass && '$P/qa.sh' handresult pass && '$P/qa.sh' cases results .qa/cases/sheet.json res.xlsx | grep -q 'results for 1 of 1'"
+expect_exit "sheet-only run cannot submit to Jira" 1 "$P/qa.sh" submit
+sleep 1; touch sheet.csv
+expect_exit "drift when the Excel file changes after import" 4 "$P/qa.sh" drift
+echo 'DEMO-1|2026-01-01T00:00:00.000+0000|Ready for QA|Self-test story|2026-01-01T00:00:00Z' > .qa/anchor
 check "flaky check reports a verdict" bash -c "'$P/qa.sh' flaky 2 -- true | grep -q 'stable pass'"
 
 echo "5. Safety gates (nothing is sent)"

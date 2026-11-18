@@ -12,7 +12,8 @@ The aim is to add tests that look as though the existing team wrote them. Don't 
 Summarise these findings to the person in 5 to 8 bullets before generating code.
 
 ## 2. Source of the scenario
-In priority order: the Zephyr case (`zephyr.sh case CASEKEY`), the local `.qa/cases/KEY.json`, a recorded walkthrough (`.qa/runs/KEY/<run>/steps.jsonl`), or steps the person types.
+In priority order: the Zephyr case (`zephyr.sh case CASEKEY`), the tester's Excel sheet imported with `qa.sh cases import` (`qa.sh cases show F ID`), the local `.qa/cases/KEY.json`, a recorded walkthrough (`.qa/runs/KEY/<run>/steps.jsonl`), or steps the person types.
+For a whole sheet, see [excel-driven.md](excel-driven.md).
 
 ## 3. Confirm locators on the live test env
 - `qa.sh laneguard URL` → Playwright MCP `browser_navigate` → `browser_snapshot`
