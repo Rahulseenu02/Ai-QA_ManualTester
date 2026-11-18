@@ -16,6 +16,8 @@ These apply to every skill in the pack. If a step conflicts with a rule, the rul
 1. Run `qa.sh anchor KEY` before any work on a ticket.
 2. Run `qa.sh drift KEY` before every **write, run or submit**. Exit 3 means the key differs from the pin, so re-anchor. Exit 4 means Jira changed: re-read the ticket, tell the person what changed, and re-anchor. Exit 5 means Jira can't be reached: stop.
 3. **One ticket and one scenario per chat.** If the person switches keys, re-anchor and say that a fresh chat is cleaner.
+   - **Excel sheets:** one sheet per chat, pinned with `qa.sh anchor --sheet`. Cases run one at a time, each as its own run, with a "next case or stop" check between them. Drift on a sheet pin means the Excel file changed after import, so re-import it.
+   - **Never overwrite the tester's own Excel file.** Results go into a new workbook in `.qa/exports/`.
 4. **Never take an issue key from a screenshot** or image. Ask the person to type it, or pick it from a list you fetched from Jira.
 
 ## Writes

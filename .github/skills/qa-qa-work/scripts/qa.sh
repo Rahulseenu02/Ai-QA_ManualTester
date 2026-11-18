@@ -9,6 +9,7 @@ mkdir -p "$QA_DIR/runs" "$QA_DIR/cases" "$QA_DIR/reports" "$QA_DIR/exports"
 usage() { cat <<'EOF'
 Setup        preflight                         tokens, connectivity, anchor, version source
 Pin          anchor KEY | anchor               pin the ticket for this chat (one ticket, one scenario)
+             anchor --sheet CASES.json         pin an imported Excel/CSV sheet instead (no Jira needed)
              drift [KEY]                       exit 3 = different key (re-anchor), 4 = ticket changed in Jira
 Manual run   laneguard [URL]                   confirm QA lane: anchored, no drift, non-prod host, version
              run start [CASEKEY]               open a hand-run (records app version)
@@ -18,6 +19,8 @@ Manual run   laneguard [URL]                   confirm QA lane: anchored, no dri
              walkthrough [OUT.json]            turn the recorded run into a draft test case
 Submit       submit [--case CASEKEY --cycle CYCLEKEY] [--yes]   Jira comment + evidence + Zephyr result
 Cases        cases lint FILE | cases export FILE [--xlsx|--csv] [OUT] | cases push FILE [--yes]
+             cases import SHEET.xlsx|.csv [--sheet NAME] [OUT.json]   read the tester's own sheet
+             cases list FILE | cases show FILE CASEID | cases results FILE [OUT.xlsx]
 Reports      coverage KEY | ready KEY | readiness VERSION | signoff VERSION [CYCLEKEY] | standup [Nd]
 Bugs         retest | dupes "words" | autoclose-candidates | cnr-draft KEY ATTEMPTS
 Automation   flaky N -- <test command...>
@@ -26,12 +29,22 @@ EOF
 }
 
 cur_run() { [ -f "$QA_DIR/runs/current" ] && cat "$QA_DIR/runs/current" || die "no open run — qa.sh run start [CASEKEY]"; }
-require_anchor() { local k; k="$(anchor_key || true)"; [ -n "$k" ] || die "no ticket pinned — qa.sh anchor KEY"; echo "$k"; }
+require_anchor() { local k; k="$(anchor_key || true)"; [ -n "$k" ] || die "no ticket pinned — qa.sh anchor KEY (or anchor --sheet CASES.json)"; echo "$k"; }
+mtime() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1"; }
+is_sheet() { case "$1" in SHEET-*) return 0;; esac; return 1; }
 
 drift() { # [KEY] -> 0 ok, 3 key mismatch, 4 changed
   local k want line upd st
   k="$(require_anchor)"; want="${1:-$k}"
   if [ "$want" != "$k" ]; then echo "DRIFT: chat is pinned to $k but you asked about $want. Re-anchor: qa.sh anchor $want"; return 3; fi
+  if is_sheet "$k"; then # sheet pin: drift = the tester's Excel file changed after import
+    local cj src; cj="$(cut -d'|' -f4 "$(anchor_file)")"; src="$(jq -r '.source.file' "$cj" 2>/dev/null)"
+    [ -f "$src" ] || { echo "DRIFT CHECK FAILED: source sheet $src not found."; return 5; }
+    if [ "$(mtime "$src")" != "$(cut -d'|' -f2 "$(anchor_file)")" ]; then
+      echo "DRIFT: $(basename "$src") changed since it was imported. Re-import: qa.sh cases import \"$src\" then qa.sh anchor --sheet $cj"; return 4
+    fi
+    echo "No drift: $k (sheet $(basename "$src"), no Jira)"; return 0
+  fi
   line="$("$J" updated "$k")" || { echo "DRIFT CHECK FAILED: cannot read $k from Jira. Do not write until this works."; return 5; }
   upd="$(echo "$line" | cut -d'|' -f2)"; st="$(echo "$line" | cut -d'|' -f3)"
   if [ "$upd" != "$(cut -d'|' -f2 "$(anchor_file)")" ]; then
@@ -58,6 +71,14 @@ case "$cmd" in
 
   anchor)
     if [ -z "${1:-}" ]; then [ -f "$(anchor_file)" ] && tr '|' '\n' < "$(anchor_file)" | paste -d' ' <(printf 'key\nupdated\nstatus\nsummary\npinned\n') - || echo "No ticket pinned"; exit 0; fi
+    if [ "$1" = "--sheet" ]; then
+      f="${2:-}"; [ -f "$f" ] || die "usage: qa.sh anchor --sheet CASES.json (from qa.sh cases import)"
+      src="$(jq -r '.source.file // empty' "$f")"; [ -n "$src" ] || die "$f was not imported from a sheet — run qa.sh cases import first"
+      k="SHEET-$(printf '%s' "$(jq -r '.source.sheet' "$f")" | tr 'a-z' 'A-Z' | tr -c 'A-Z0-9' '_' | cut -c1-30)"
+      fa="$(cd "$(dirname "$f")" && pwd)/$(basename "$f")"
+      echo "$k|$(mtime "$src")|sheet|$fa|$(now_iso)" > "$(anchor_file)"; rm -f "$QA_DIR/runs/current"
+      echo "Pinned sheet $k: $(jq '.cases|length' "$f") case(s) from $(basename "$src"). Results go back to Excel; Jira is not touched."; exit 0
+    fi
     valid_key "$1" || die "not a Jira key: $1 (type it; never read keys from a screenshot)"
     old="$(anchor_key || true)"
     line="$("$J" updated "$1")"; echo "$line|$(now_iso)" > "$(anchor_file)"
@@ -73,13 +94,14 @@ case "$cmd" in
     h="$(host_of "$url")"
     for p in $(echo "${PROD_HOSTS:-}" | tr ',' ' '); do [ "$h" = "$p" ] && die "LANE BLOCKED: $h is a production host. QA hand-runs go to test environments only."; done
     v="$("$SCRIPTS_DIR/appversion.sh" 2>/dev/null | cut -f1 || true)"
+    echo "$url" > "$QA_DIR/lane_url"
     echo "LANE OK: QA | ticket $k | host $h | version ${v:-UNKNOWN (ask tester)}" ;;
 
   run)
     [ "${1:-}" = start ] || die "usage: qa.sh run start [CASEKEY]"
     k="$(require_anchor)"; id="$(date +%Y%m%d-%H%M%S)"; d="$QA_DIR/runs/$k/$id"; mkdir -p "$d/evidence"
     v="$("$SCRIPTS_DIR/appversion.sh" 2>/dev/null | cut -f1 || true)"
-    printf 'KEY=%s\nCASE=%s\nVERSION=%s\nURL=%s\nSTARTED=%s\n' "$k" "${2:-}" "${v:-UNKNOWN}" "${APP_URL:-}" "$(now_iso)" > "$d/meta.env"
+    printf 'KEY=%s\nCASE=%s\nVERSION=%s\nURL=%s\nSTARTED=%s\n' "$k" "${2:-}" "${v:-UNKNOWN}" "$(cat "$QA_DIR/lane_url" 2>/dev/null || echo "${APP_URL:-}")" "$(now_iso)" > "$d/meta.env"
     : > "$d/steps.jsonl"; echo "$d" > "$QA_DIR/runs/current"
     echo "Run open: $d (version ${v:-UNKNOWN — ask tester and set VERSION in meta.env})" ;;
 
@@ -122,6 +144,7 @@ case "$cmd" in
 
   submit)
     d="$(cur_run)"; . "$d/meta.env"; [ -f "$d/result.md" ] || die "run qa.sh handresult first"
+    is_sheet "$KEY" && die "Sheet-only run: write results back to Excel with qa.sh cases results <cases.json>. To also post to Jira, pin the story (qa.sh anchor KEY) and run the case again."
     st="$(cat "$d/status")"; case_key="$CASE"; cycle=""; yes=""
     while [ $# -gt 0 ]; do case "$1" in --case) case_key="$2"; shift;; --cycle) cycle="$2"; shift;; --yes) yes="--yes";; esac; shift; done
     drift "$KEY" >/dev/null || { drift "$KEY"; exit 4; }
@@ -140,8 +163,18 @@ case "$cmd" in
     echo "Submitted." ;;
 
   cases)
-    sub="${1:-}"; f="${2:-}"; [ -f "$f" ] || die "usage: qa.sh cases lint|export|push FILE ..."
+    sub="${1:-}"; f="${2:-}"; [ -f "$f" ] || die "usage: qa.sh cases lint|export|push|import|list|show|results FILE ..."
     case "$sub" in
+      import) sheet=""; out=""; shift 2
+              while [ $# -gt 0 ]; do case "$1" in --sheet) sheet="$2"; shift;; *) out="$1";; esac; shift; done
+              clean() { printf '%s' "$1" | tr -c 'A-Za-z0-9_-' '_' | tr -s '_'; }
+              base="$(clean "$(basename "${f%.*}")")"; [ -n "$sheet" ] && base="$base-$(clean "$sheet")"
+              out="${out:-$QA_DIR/cases/$base.json}"
+              $C import "$f" "$out" ${sheet:+--sheet "$sheet"} && { echo; $C list "$out"; echo; $C lint "$out" | tail -8 || true; } ;;
+      list) $C list "$f" ;;
+      show) [ -n "${3:-}" ] || die "usage: qa.sh cases show FILE CASEID"; $C show "$f" "$3" ;;
+      results) out="${3:-$QA_DIR/exports/$(basename "${f%.*}")-results-$(date +%Y%m%d-%H%M).xlsx}"
+               $C results "$f" "$QA_DIR/runs" "$out" ;;
       lint) $C lint "$f" ;;
       export) fmt="${3:---xlsx}"; story="$(jq -r .story "$f")"; ext="${fmt#--}"
               out="${4:-$QA_DIR/exports/$story-cases.$ext}"; $C export "$f" "$fmt" "$out" ;;
@@ -153,7 +186,7 @@ case "$cmd" in
             [ -n "$existing" ] && { echo "Already linked to $story:"; echo "$existing" | sed 's/^/  = /'; echo "(check for duplicates before saying yes)"; }
             gate "create $(jq '.cases|length' "$f") Zephyr case(s)" "$@"
             tmp="$(mktemp -d)"; for c in $($C split "$f" "$tmp"); do "$Z" create-case "$c" "$story" --yes; done ;;
-      *) die "cases lint|export|push" ;;
+      *) die "cases lint|export|push|import|list|show|results" ;;
     esac ;;
 
   coverage)

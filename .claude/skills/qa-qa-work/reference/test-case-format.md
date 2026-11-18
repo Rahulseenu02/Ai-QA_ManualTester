@@ -42,8 +42,15 @@ One file per story: `.qa/cases/<STORY>.json`. The same file feeds the lint, Exce
 ## Destinations
 | Destination | Command | Notes |
 |---|---|---|
-| Excel | `qa.sh cases export FILE --xlsx [OUT]` | one row per step. Columns: Case ID, Story, Title, Objective, Precondition, Priority, Type, AC, Step #, Action, Test Data, Expected, Actual, Status, Evidence, App Version. Header is frozen and filtered. |
+| Excel | `qa.sh cases export FILE --xlsx [OUT]` | one row per step. Columns: Case ID, Story, Title, Objective, Precondition, Priority, Type, AC, Step #, Action, Test Data, Expected, Actual, Status, Case Result, Evidence, App Version. Header is frozen and filtered. |
 | CSV | `qa.sh cases export FILE --csv [OUT]` | same columns, UTF-8 with BOM so Excel opens it cleanly |
 | Zephyr | `qa.sh cases push FILE` → `--yes` | creates each case, sets its steps, and links it to the story. **Can't be deleted from here.** |
 
-Importing from Excel ("check these test cases"): read the sheet, map the columns to this format, then lint.
+## Importing the tester's own sheet
+`qa.sh cases import SHEET.xlsx|SHEET.csv [--sheet NAME]` writes `.qa/cases/<file>[-sheet].json` in this format, adds a `source` block (file, sheet, header row, columns used), then lints.
+- Both common layouts work: **one row per step** (case ID only on the first row, or merged cells) and **one row per case** with numbered steps and expected results in one cell (`1. … 2. …`).
+- The header row is found automatically in the first 15 rows from common names (Test Case ID/TC ID, Title/Test Scenario, Pre-Condition, Test Steps/Action, Test Data, Expected Result, Priority, Module, Story/Jira ID, Automation). Unknown columns are listed as ignored.
+- Priority P1–P4, Blocker, Major and Minor are mapped to Critical, High, Normal and Low.
+- On import, a missing Jira story is a warning, not an error. Intermediate steps without an expected result are also warnings; only the last step must have one.
+- `.xls` (old binary) isn't read. Save it as `.xlsx` or `.csv`.
+- **Results:** `qa.sh cases results FILE.json [OUT.xlsx]` builds a **new** workbook with Actual, Status, Case Result, Evidence and App Version taken from the latest run of each case. The original file stays untouched.

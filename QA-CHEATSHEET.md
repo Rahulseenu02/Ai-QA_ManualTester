@@ -5,12 +5,14 @@
 ## Say this → get this
 | You say | What happens |
 |---|---|
-| "guide me" / "QA guide" | short guide + 17-item QA menu |
+| "guide me" / "QA guide" | short guide + 18-item QA menu |
 | "test BWS-123" / "review this ticket and test it" | pin the ticket → review the AC and gaps → ready check → coverage → hand-run in the browser (Playwright MCP) → result |
 | "explore jira ticket BWS-123" | risk map, test ideas, questions, optional exploratory session |
 | "ready to test BWS-123?" | checklist: status, AC, fix version, links, cases, version |
 | "write test cases for BWS-123" | cases from the AC → lint → **Zephyr, Excel (.xlsx) or CSV** |
 | "check these test cases" (paste or Excel) | lint findings per case |
+| "run my Excel test cases" + attach the .xlsx/.csv | import the sheet (shows which columns it understood) → pick cases → browser run per case → **new** results workbook (your file is never changed) |
+| "automate my test case sheet" | Playwright specs per case ID in your suite's style, each run 3×, plus a case → spec map |
 | "run the test" / "hand test this" | browser steps with a screenshot per step → result.md |
 | "record what I do into a case" | walkthrough → draft case |
 | "mark it passed / failed / blocked" | Jira comment + screenshots + app version (+ Zephyr result) |
@@ -44,4 +46,4 @@
 3. Say *"guide me"*.
 
 ## Where things land
-`.qa/runs/<KEY>/<run>/` evidence and result.md · `.qa/cases/<KEY>.json` cases · `.qa/exports/` Excel and CSV · `.qa/reports/` readiness, sign-off, flaky logs
+`.qa/runs/<KEY>/<run>/` evidence and result.md · `.qa/cases/<KEY>.json` cases (also imported sheets) · `.qa/exports/` Excel and CSV, including `*-results-<date>.xlsx` · `.qa/reports/` readiness, sign-off, flaky logs

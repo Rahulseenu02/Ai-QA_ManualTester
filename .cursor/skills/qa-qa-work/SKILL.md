@@ -1,6 +1,6 @@
 ---
 name: qa-qa-work
-description: Runs the items on the QA menu. It reviews a Jira ticket and hand-tests it with Playwright MCP, writes and lints test cases into Zephyr or Excel, records walkthroughs, submits Pass/Fail/Blocked results with screenshots and app version, files and retests bugs, runs test cycles, checks coverage and ready-to-test, writes or fixes Playwright automation that follows the existing suite, handles flaky and could-not-reproduce checks, does accessibility quick-checks, and builds release-readiness and sign-off evidence. Used when qa-qa-guide routes here, or when the person asks for one of these QA tasks directly.
+description: Runs the items on the QA menu. It reviews a Jira ticket and hand-tests it with Playwright MCP, writes and lints test cases into Zephyr or Excel, imports the tester's own Excel/CSV test cases and runs them manually with Playwright MCP or turns them into Playwright automation, records walkthroughs, submits Pass/Fail/Blocked results with screenshots and app version, files and retests bugs, runs test cycles, checks coverage and ready-to-test, writes or fixes Playwright automation that follows the existing suite, handles flaky and could-not-reproduce checks, does accessibility quick-checks, and builds release-readiness and sign-off evidence. Used when qa-qa-guide routes here, or when the person asks for one of these QA tasks directly.
 disable-model-invocation: true
 ---
 
@@ -20,6 +20,7 @@ Scripts are in `scripts/` next to this file (`$QA`). Before the first action in 
 | Hand-run | `qa.sh run start [CASEKEY]` → `qa.sh steprun …` → `qa.sh snap FILE label` → `qa.sh handresult pass\|fail\|blocked` |
 | Submit | `qa.sh submit --case CASEKEY --cycle CYCLEKEY` (preview) → same command with `--yes` |
 | Cases | `qa.sh cases lint F` · `qa.sh cases export F --xlsx` · `qa.sh cases push F` |
+| Excel in, results out | `qa.sh cases import SHEET.xlsx [--sheet NAME]` · `qa.sh anchor --sheet F` · `qa.sh cases list F` · `qa.sh cases show F ID` · `qa.sh cases results F` |
 | Zephyr | `zephyr.sh cases-for KEY` · `case CASEKEY` · `create-cycle NAME` · `cycle CYCLEKEY` · `statuses` |
 | Bugs | `qa.sh dupes "words"` · `jira.sh create-bug F.json` · `jira.sh attach KEY files` · `qa.sh retest` |
 | Reports | `qa.sh coverage KEY` · `qa.sh ready KEY` · `qa.sh readiness VER` · `qa.sh signoff VER [CYCLE]` |
@@ -132,3 +133,18 @@ Follow [automation.md](reference/automation.md). In short:
 - [ ] `qa.sh signoff "VER" [CYCLE]` → add a short narrative: scope tested, results, open bugs by priority, known risks, untested areas
 - [ ] **Never write "ready", "approved", "go" or "ship".** End with: *"Release call: yours."*
 - [ ] Posting it anywhere (a Jira comment on the release ticket) is a write, so preview → yes
+
+## §17 Excel-driven testing (the tester's own sheet → manual run or automation)
+Details: [excel-driven.md](reference/excel-driven.md).
+- [ ] Get the file path. The person attaches the file or types the path; never guess it. `.xls` → ask them to save it as `.xlsx` or `.csv`.
+- [ ] `qa.sh cases import FILE [--sheet NAME]`. If it lists several sheets, ask which one (numbered). Show **columns used and ignored** plus the case list, then ask `1) Mapping looks right  2) Fix a column`.
+- [ ] **Pin.** If the sheet holds one Jira story key and Jira is set up, ask `1) Link to <KEY> (results also go to Jira)  2) Sheet only`. Option 1 → `qa.sh anchor KEY`. Option 2 → `qa.sh anchor --sheet .qa/cases/<name>.json`.
+- [ ] Ask the mode: `1) Manual run with Playwright MCP  2) Generate automation scripts  3) Both: run by hand first, then automate the cases that passed`
+- [ ] Ask the scope: `1) One case (pick from list)  2) Critical/High only  3) Not yet automated  4) Whole sheet`
+- [ ] **Manual**, one case at a time:
+  - `qa.sh cases show F ID`, then run §5 with `qa.sh run start ID`. Each case is its own run, and the result comes from `handresult`.
+  - After each case, show the result and ask `1) Next case  2) Stop here`.
+  - Steps the sheet leaves vague ("(see title)", "verify it works") → ask the tester what to check before running.
+- [ ] **Write back:** `qa.sh cases results F` makes a new workbook in `.qa/exports/` with Actual, Status, Case Result, Evidence and App Version filled in. **The tester's original file is never changed.**
+- [ ] **Fails:** pinned to Jira → offer §8. Sheet only → write the bug draft to `.qa/bugs/<ID>.json` with the six headings and tell the tester; filing waits for Jira.
+- [ ] **Automation:** §12 with the sheet as the source (`qa.sh cases show F ID` per case). Make one test per case, titled and tagged with the sheet's case ID, and skip cases labelled `automated` unless asked. Run each spec, then `qa.sh flaky 3 -- <cmd>`. Save the map of case ID → spec file and test name to `.qa/reports/<sheet>-automation-map.md`.
